@@ -16,8 +16,12 @@
 - 条目支持追加档位和锐评
 - 榜单支持点赞
 - 用户可创建自己的排行榜
+- 访问站点时会自动匿名登录，并持久化到浏览器 Cookie
+- 会记住每个匿名用户点过哪些赞、写过哪些评论
 - 图片上传当前以前端 Data URL 字符串方式提交
 - 用户界面只展示 `夯 / 顶级 / 人上人 / NPC / 拉完了`
+- 已增加最基础的匿名限流、敏感词过滤、图片大小/类型限制
+- 已提供最小管理员删除接口
 
 ## 本地启动
 
@@ -33,11 +37,11 @@ npm.cmd install
 Copy-Item .env.example .env
 ```
 
-3. 准备数据库并生成 Prisma Client
+3. 同步数据库结构并生成 Prisma Client
 
 ```powershell
 npm.cmd run prisma:generate
-npm.cmd run prisma:migrate
+npm.cmd exec prisma db push
 npm.cmd run prisma:seed
 ```
 
@@ -61,6 +65,20 @@ http://127.0.0.1:3000
 
 - `DATABASE_URL`
 - `DIRECT_URL`
+- `ADMIN_TOKEN`
+
+匿名登录说明：
+
+- 首次访问会由 `middleware.ts` 自动下发匿名会话 Cookie
+- 服务端会基于 Cookie 自动创建 `AppUser`
+- 点赞记录和评论作者都会绑定到这个匿名用户
+
+## 最小管理接口
+
+通过请求头传 `x-admin-token: $ADMIN_TOKEN` 调用：
+
+- `DELETE /api/admin/rankings/:id`
+- `DELETE /api/admin/rankings/:id/items/:itemId`
 
 ## 技术文档
 

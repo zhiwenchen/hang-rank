@@ -8,17 +8,33 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model AppUser {
+  id           String              @id @default(cuid())
+  sessionToken String              @unique
+  displayName  String
+  isAnonymous  Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  rankings     Ranking[]           @relation("RankingAuthor")
+  itemReviews  RankingItemReview[] @relation("ReviewAuthor")
+  rankingLikes RankingLike[]
+  reviewLikes  ReviewLike[]
+}
+
 model Ranking {
   id          String         @id @default(cuid())
   title       String
   category    String
   description String
   source      String         @default("user")
+  authorId    String?
   likes       Int            @default(0)
   votes       Int            @default(0)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+  author      AppUser?       @relation("RankingAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   items       RankingItem[]
+  rankingLikes RankingLike[]
 }
 
 model RankingItem {
@@ -33,6 +49,49 @@ model RankingItem {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   ranking      Ranking  @relation(fields: [rankingId], references: [id], onDelete: Cascade)
+  reviews      RankingItemReview[]
 
   @@index([rankingId])
+}
+
+model RankingItemReview {
+  id            String      @id @default(cuid())
+  rankingItemId String
+  userId        String?
+  authorName    String
+  tier          String
+  review        String
+  likes         Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  author        AppUser?    @relation("ReviewAuthor", fields: [userId], references: [id], onDelete: SetNull)
+  item          RankingItem @relation(fields: [rankingItemId], references: [id], onDelete: Cascade)
+  reviewLikes   ReviewLike[]
+
+  @@index([rankingItemId])
+  @@index([userId])
+}
+
+model RankingLike {
+  id        String   @id @default(cuid())
+  userId    String
+  rankingId String
+  createdAt DateTime @default(now())
+  ranking   Ranking  @relation(fields: [rankingId], references: [id], onDelete: Cascade)
+  user      AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, rankingId])
+  @@index([rankingId])
+}
+
+model ReviewLike {
+  id        String            @id @default(cuid())
+  userId    String
+  reviewId  String
+  createdAt DateTime          @default(now())
+  review     RankingItemReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user       AppUser           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reviewId])
+  @@index([reviewId])
 }

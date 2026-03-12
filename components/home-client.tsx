@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import type { HomepageData } from "@/lib/types";
 import type { Tier } from "@/lib/tiers";
@@ -68,6 +68,37 @@ export function HomeClient({ initialData }: { initialData: HomepageData }) {
     [currentRankingId, data.rankingDetails]
   );
 
+  useEffect(() => {
+    if (initialData.currentUser) {
+      return;
+    }
+
+    async function bootstrapAnonymousSession() {
+      const rankingsRes = await fetch("/api/rankings", { cache: "no-store" });
+      if (!rankingsRes.ok) {
+        return;
+      }
+
+      const rankingsPayload = await rankingsRes.json();
+      const detailPayloads = await Promise.all(
+        rankingsPayload.rankings.map((ranking: { id: string }) =>
+          fetch(`/api/rankings/${ranking.id}`, { cache: "no-store" }).then((res) => res.json())
+        )
+      );
+
+      setData({
+        currentUser: rankingsPayload.currentUser,
+        rankings: rankingsPayload.rankings,
+        categories: rankingsPayload.categories,
+        stats: rankingsPayload.stats,
+        rankingDetails: detailPayloads.map((payload) => payload.ranking)
+      });
+      setCurrentRankingId((prev) => rankingsPayload.rankings.some((ranking: { id: string }) => ranking.id === prev) ? prev : rankingsPayload.rankings[0]?.id ?? null);
+    }
+
+    void bootstrapAnonymousSession();
+  }, [initialData.currentUser]);
+
   async function refresh(nextCategory?: string) {
     const category = nextCategory ?? currentCategory;
     const listUrl = category !== "全部" ? `/api/rankings?category=${encodeURIComponent(category)}` : "/api/rankings";
@@ -80,6 +111,7 @@ export function HomeClient({ initialData }: { initialData: HomepageData }) {
     );
 
     const nextData: HomepageData = {
+      currentUser: rankingsPayload.currentUser ?? data.currentUser,
       rankings: rankingsPayload.rankings,
       categories: rankingsPayload.categories,
       stats: rankingsPayload.stats,
@@ -96,7 +128,28 @@ export function HomeClient({ initialData }: { initialData: HomepageData }) {
   }
 
   async function handleLike(rankingId: string) {
-    await fetch(`/api/rankings/${rankingId}/like`, { method: "POST" });
+    if (!data.currentUser) {
+      window.alert("匿名身份还在初始化，请稍后再试。");
+      return;
+    }
+    const response = await fetch(`/api/rankings/${rankingId}/like`, { method: "POST" });
+    if (!response.ok) {
+      window.alert("点赞失败，请刷新后重试。");
+      return;
+    }
+    await refresh();
+  }
+
+  async function handleReviewLike(reviewId: string) {
+    if (!data.currentUser) {
+      window.alert("匿名身份还在初始化，请稍后再试。");
+      return;
+    }
+    const response = await fetch(`/api/reviews/${reviewId}/like`, { method: "POST" });
+    if (!response.ok) {
+      window.alert("评价点赞失败，请刷新后重试。");
+      return;
+    }
     await refresh();
   }
 
@@ -121,6 +174,10 @@ export function HomeClient({ initialData }: { initialData: HomepageData }) {
   }
 
   async function handlePublishRanking() {
+    if (!data.currentUser) {
+      window.alert("匿名身份还在初始化，请稍后再试。");
+      return;
+    }
     if (!builder.title.trim() || !builder.category.trim() || !builder.description.trim() || draftItems.length === 0) {
       window.alert("请填写完整榜单信息，并至少添加一个条目。");
       return;
@@ -154,6 +211,10 @@ export function HomeClient({ initialData }: { initialData: HomepageData }) {
 
   async function handleRateSubmit() {
     if (!rateContext) return;
+    if (!data.currentUser) {
+      window.alert("匿名身份还在初始化，请稍后再试。");
+      return;
+    }
     setIsSubmitting(true);
     const response = await fetch(`/api/rankings/${rateContext.rankingId}/items/${rateContext.itemId}/rate`, {
       method: "POST",
@@ -188,7 +249,12 @@ export function HomeClient({ initialData }: { initialData: HomepageData }) {
               <span className="text-sm text-muted">社区定档、锐评、发布都在一个站里</span>
             </div>
           </div>
-          <a href="#builder" className="action-button border border-line bg-white/5 text-sand">发布我的榜单</a>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-full border border-line bg-white/5 px-4 py-2 text-sm text-sand">
+              {data.currentUser ? `${data.currentUser.displayName} 已匿名登录` : "正在初始化匿名身份"}
+            </div>
+            <a href="#builder" className="action-button border border-line bg-white/5 text-sand">发布我的榜单</a>
+          </div>
         </nav>
 
         <section className="mt-7 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
@@ -276,7 +342,7 @@ export function HomeClient({ initialData }: { initialData: HomepageData }) {
                     <p className="mt-2 text-sm leading-7 text-sand/85">{ranking.description}</p>
                     <div className="mt-4 flex items-center justify-between gap-4 text-sm">
                       <strong className="font-display text-lg text-sand">{ranking.headlineTier}</strong>
-                      <span className="text-muted">{ranking.votes} 次评价</span>
+                      <span className="text-muted">{ranking.likedByViewer ? `你赞过 · ${ranking.votes} 次评价` : `${ranking.votes} 次评价`}</span>
                     </div>
                   </button>
                 ))
@@ -300,44 +366,82 @@ export function HomeClient({ initialData }: { initialData: HomepageData }) {
                       <p className="mt-5 max-w-3xl leading-7 text-sand/90">{currentRanking.description}</p>
                     </div>
                     <button type="button" className="action-button border border-line bg-white/5 text-sand" onClick={() => void handleLike(currentRanking.id)}>
-                      ♥ 点赞榜单
+                      {currentRanking.likedByViewer ? "♥ 取消点赞" : "♥ 点赞榜单"}
                     </button>
                   </div>
 
                   <div className="mt-6 grid gap-3">
                     {currentRanking.items.map((item) => (
-                      <div key={item.id} className="grid gap-4 rounded-[20px] border border-line bg-white/5 p-4 md:grid-cols-[86px_96px_1fr_auto] md:items-center">
-                        <div className="text-center font-semibold text-muted">{item.displayTier}</div>
-                        {item.image ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={item.image} alt={item.name} className="h-24 w-24 rounded-[20px] object-cover" />
-                        ) : (
-                          <div className="grid h-24 w-24 place-items-center rounded-[20px] bg-[linear-gradient(135deg,rgba(255,141,77,0.38),rgba(182,240,111,0.3))] text-4xl">
-                            {item.emoji || "✦"}
+                      <div key={item.id} className="rounded-[20px] border border-line bg-white/5 p-4">
+                        <div className="grid gap-4 md:grid-cols-[86px_96px_1fr_auto] md:items-center">
+                          <div className="text-center font-semibold text-muted">{item.displayTier}</div>
+                          {item.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={item.image} alt={item.name} className="h-24 w-24 rounded-[20px] object-cover" />
+                          ) : (
+                            <div className="grid h-24 w-24 place-items-center rounded-[20px] bg-[linear-gradient(135deg,rgba(255,141,77,0.38),rgba(182,240,111,0.3))] text-4xl">
+                              {item.emoji || "✦"}
+                            </div>
+                          )}
+                          <div>
+                            <h4 className="text-xl font-semibold text-sand">{item.name}</h4>
+                            <div className="mt-2 flex flex-wrap gap-4 text-sm text-muted">
+                              <span>{currentRanking.category}</span>
+                              <span>{item.displayTier}</span>
+                              <span>{item.ratingsCount} 人参与</span>
+                              <span>{item.reviews.length} 条评价</span>
+                            </div>
+                            <p className="mt-2 leading-7 text-sand/90">{item.review}</p>
                           </div>
-                        )}
-                        <div>
-                          <h4 className="text-xl font-semibold text-sand">{item.name}</h4>
-                          <div className="mt-2 flex flex-wrap gap-4 text-sm text-muted">
-                            <span>{currentRanking.category}</span>
-                            <span>{item.displayTier}</span>
-                            <span>{item.ratingsCount} 人参与</span>
+                          <div className="flex flex-col items-start gap-3 md:items-end">
+                            <div className="font-display text-3xl text-sand">{item.displayTier}</div>
+                            <button
+                              type="button"
+                              className="action-button border border-line bg-white/5 px-4 py-2 text-sm text-sand"
+                              onClick={() => {
+                                setRateContext({ rankingId: currentRanking.id, itemId: item.id, itemName: item.name });
+                                setRateTier(item.displayTier);
+                                setRateReview("");
+                              }}
+                            >
+                              我要评价
+                            </button>
                           </div>
-                          <p className="mt-2 leading-7 text-sand/90">{item.review}</p>
                         </div>
-                        <div className="flex flex-col items-start gap-3 md:items-end">
-                          <div className="font-display text-3xl text-sand">{item.displayTier}</div>
-                          <button
-                            type="button"
-                            className="action-button border border-line bg-white/5 px-4 py-2 text-sm text-sand"
-                            onClick={() => {
-                              setRateContext({ rankingId: currentRanking.id, itemId: item.id, itemName: item.name });
-                              setRateTier(item.displayTier);
-                              setRateReview("");
-                            }}
-                          >
-                            我要评价
-                          </button>
+
+                        <div className="mt-5 border-t border-line pt-4">
+                          <div className="mb-3 flex items-center justify-between gap-4">
+                            <strong className="text-sand">全部评价</strong>
+                            <span className="text-sm text-muted">{item.reviews.length} 条</span>
+                          </div>
+
+                          {item.reviews.length === 0 ? (
+                            <div className="rounded-[18px] border border-dashed border-line bg-black/10 p-4 text-sm text-muted">
+                              还没有人给这个条目留下评价。
+                            </div>
+                          ) : (
+                            <div className="grid gap-3">
+                              {item.reviews.map((review) => (
+                                <div key={review.id} className="rounded-[18px] border border-line bg-black/10 p-4">
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex flex-wrap items-center gap-3 text-sm">
+                                      <span className="text-sand/80">{review.isOwnedByViewer ? "你" : review.authorName}</span>
+                                      <span className="rounded-full border border-line px-3 py-1 text-sand">{review.tier}</span>
+                                      <span className="text-muted">{formatReviewTime(review.createdAt)}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="action-button border border-line bg-white/5 px-3 py-2 text-sm text-sand"
+                                      onClick={() => void handleReviewLike(review.id)}
+                                    >
+                                      {review.likedByViewer ? "♥ 已赞" : "♥ 点赞"} {review.likes}
+                                    </button>
+                                  </div>
+                                  <p className="mt-3 leading-7 text-sand/90">{review.review}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -514,4 +618,9 @@ function pickEmojiByCategory(category: string) {
   if (category.includes("游")) return "🎮";
   if (category.includes("动画") || category.includes("角色")) return "✨";
   return "✦";
+}
+
+function formatReviewTime(isoString: string) {
+  const date = new Date(isoString);
+  return Number.isNaN(date.getTime()) ? "刚刚" : date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }

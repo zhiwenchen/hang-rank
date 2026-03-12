@@ -1,5 +1,11 @@
 import type { Tier } from "@/lib/tiers";
 
+export type CurrentUserDTO = {
+  id: string;
+  displayName: string;
+  isAnonymous: boolean;
+};
+
 export type RankingListItemDTO = {
   id: string;
   title: string;
@@ -8,6 +14,7 @@ export type RankingListItemDTO = {
   likes: number;
   votes: number;
   headlineTier: Tier;
+  likedByViewer: boolean;
 };
 
 export type RankingItemDTO = {
@@ -18,6 +25,18 @@ export type RankingItemDTO = {
   emoji: string | null;
   displayTier: Tier;
   ratingsCount: number;
+  reviews: RankingItemReviewDTO[];
+};
+
+export type RankingItemReviewDTO = {
+  id: string;
+  tier: Tier;
+  review: string;
+  likes: number;
+  createdAt: string;
+  authorName: string;
+  likedByViewer: boolean;
+  isOwnedByViewer: boolean;
 };
 
 export type RankingDetailDTO = RankingListItemDTO & {
@@ -25,6 +44,7 @@ export type RankingDetailDTO = RankingListItemDTO & {
 };
 
 export type RankingsPayload = {
+  currentUser: CurrentUserDTO | null;
   rankings: RankingListItemDTO[];
   categories: string[];
   stats: {

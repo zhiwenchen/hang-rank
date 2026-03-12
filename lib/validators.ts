@@ -11,7 +11,7 @@ export const createRankingSchema = z.object({
     review: z.string().trim().min(1).max(100),
     image: z.string().optional().default(""),
     emoji: z.string().optional().default("✦")
-  })).min(1)
+  })).min(1).max(20)
 });
 
 export const rateItemSchema = z.object({

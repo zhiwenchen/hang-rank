@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { scoreToTier } from "../lib/tiers";
 
 const prisma = new PrismaClient();
 
@@ -71,13 +72,37 @@ async function main() {
         updatedAt: ranking.updatedAt,
         items: {
           deleteMany: {},
-          create: ranking.items
+          create: ranking.items.map((item) => ({
+            ...item,
+            reviews: {
+              create: {
+                authorName: "系统热评",
+                tier: scoreToTier(item.score),
+                review: item.review,
+                likes: 0,
+                createdAt: ranking.createdAt,
+                updatedAt: ranking.updatedAt
+              }
+            }
+          }))
         }
       },
       create: {
         ...ranking,
         items: {
-          create: ranking.items
+          create: ranking.items.map((item) => ({
+            ...item,
+            reviews: {
+              create: {
+                authorName: "系统热评",
+                tier: scoreToTier(item.score),
+                review: item.review,
+                likes: 0,
+                createdAt: ranking.createdAt,
+                updatedAt: ranking.updatedAt
+              }
+            }
+          }))
         }
       }
     });
